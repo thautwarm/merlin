@@ -1,0 +1,157 @@
+import std.common.[DoubleQuotedStr]
+
+_Name   := R'[a-zA-Z_\u4e00-\u9fa5\']{1}[a-zA-Z0-9_\u4e00-\u9fa5]*'
+_Number := R'0[Xx][\da-fA-F]+|\d+(?:\.\d+|)(?:E\-{0,1}\d+|)'
+
+KeyWord cast := 'pub' 'case' 'as' 'fn'
+                'if' 'else' 'then' 'for'
+                'nil' 'true' 'false' 'uncheck'
+                'instance' 'trait' 'from' 'when' 'where'
+                'goto' 'yield'
+                'with' 'is' 'in' 'and' 'or'
+
+Identifier ::= _Name
+
+IdList ::= Identifier (',' Identifier)*
+
+Str ::= DoubleQuotedStr+
+Numeric ::= _Number
+Const ::=
+    | 'nil'
+    | 'true'
+    | 'false'
+
+IndentedStatements ::= Statement+
+Statement ::=
+    | Expr  [';']
+    | Bind  [';']
+    | Trait [';']
+    | Inst  [';']
+    | Type  [';']
+
+Bind  ::=
+    | Pat '=' IndentedStatements
+
+Trait ::=
+    'trait' as p_mark Identifier ConstraintList* ['from' InheritanceList]
+     [IndentedStatements]
+
+Type ::=
+    'type' as p_mark Identifier
+     [IndentedStatements]
+
+Instance ::=
+    'instance' as p_mark Identifier ConstraintList* ['from' InheritanceList]
+     [IndentedStatements]
+
+IfElse ::=
+    | 'if'    as p_mark Expr 'then' IndentedStatements
+      ['else' as p_mark             IndentedStatements]
+
+PatMatch::=
+    | 'case' as p_mark Expr 'as' [IndentedBranches]  # indented branches
+
+Function::=
+    | 'fn' [Identifier] '(' [TypedExprList] ')' ['->' Expr] '=' IndentedStatements
+
+Expr ::=
+    | IfElse
+    | PatMatch
+    | BOpr
+
+BOpr ::= UOpr (BOp UOpr)*
+
+UOpr ::= UOp UOpr | App
+
+App ::= Chain ('(' [ExprList] ')')*
+
+Chain ::= Atom ('.' Trail | '[' Slice ']')*
+
+Atom ::=
+    | Const
+    | Identifier
+    | LiteralDataType
+    | '(' Expr ')'
+
+
+/*
+
+1. Function
+
+
+fn f
+   | (y: float -> int) -> int
+       y 1.0
+   | (x: float) -> float =
+       x + 1.0
+
+* Lambda
+    fn (x) = x = 1
+    {x => x + 1}
+    {_ + 1}
+    {_1 + 1}
+
+
+
+2. IfElse
+
+    if exp { }
+    else { }
+
+    (if exp {result}) : option[typeof(result)]
+    (if exp {r1} else {r2}) when ( r1 == r2 on typeof): typeof(r1)
+    (if exp {r1} else {r2}) when ( r1 != r2 on typeof): union[r1, r2]
+
+
+
+3. Case
+case v as
+    x =>
+      1 + 1
+    z =>
+      s = 1
+    y => {}
+    z => {}
+    _ => {}
+
+4.
+
+trait Printable
+  fn print(this)
+  fn ...
+  fn ...
+
+
+trait SpecificField{
+    field: int
+}
+
+instance List[a, b] [from SpecificField, Printable]{
+    pub
+        fn take(this, n: int) -> List[a, n] when b >= n =>
+            uncheck this |> _.take n
+
+        fn len (this) -> int when b >= n =>
+            uncheck this |> _ . len
+
+        fn append(this, e: a) -> List[a, b + 1] =>
+            uncheck this |> _ . append e
+}
+
+type Point {
+    x : int
+    y : int
+}
+
+instance Point[a, b] when abs(a) < 10, abs(b) < 20
+
+p : Point[5, 5] = Point(1, 2)
+p : Point[5, 5] = Point[5, 10](1, 2)
+
+
+*/
+
+
+
+
+
