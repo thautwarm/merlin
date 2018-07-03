@@ -7,21 +7,34 @@ KeyWord cast := 'pub' 'case' 'as' 'fn'
                 'if' 'else' 'then' 'for'
                 'nil' 'true' 'false' 'uncheck'
                 'instance' 'trait' 'from' 'when' 'where'
-                'goto' 'yield'
-                'with' 'is' 'in' 'and' 'or'
+                'goto' 'yield' 'with' 'is' 'in' 'and' 'or'
 
-Identifier ::= _Name
+OperatorChar := '*' '^' '%' '&' '@' '$' '+' '/' '>' '<' '='  '?'
 
-IdList ::= Identifier (',' Identifier)*
+Identifier ::= _Name as name
+           rewrite
+                Symbol(name.lineno, name.colno, name.value)
 
-Str ::= DoubleQuotedStr+
-Numeric ::= _Number
-Const ::=
-    | 'nil'
-    | 'true'
-    | 'false'
+IdList ::= (Identifier (',' Identifier)*) as seq
+           rewrite tuple(seq[::2])
 
-IndentedStatements ::= Statement+
+Str    ::= DoubleQuotedStr+ as seq
+           rewrite
+                head = seq[0]
+                Const.str(head.lineno, head.colno, ''.join(e.value for e in seq))
+
+Numeric::= _Number as num
+           rewrite  Const.num(num.lineno, num.colno, eval(num.value))
+
+Const  ::=
+    | 'nil'   as nil
+    | 'true'  as true
+    | 'false' as false
+    rewrite
+        Const.nil(nil.lineno, nil.colno)      if nil  else\
+        Const.true(true.lineno, true.colno)   if true else\
+        Const.false(false.lineno, false.colno)
+
 Statement ::=
     | Expr  [';']
     | Bind  [';']
@@ -29,37 +42,54 @@ Statement ::=
     | Inst  [';']
     | Type  [';']
 
+BindItem ::=
+    Pat as pat '=' Expr as exp
+    rewrite
+        BindItem(pat.lineno, pat.colno, pat, exp)
+
 Bind  ::=
-    | Pat '=' IndentedStatements
-
-Trait ::=
-    'trait' as p_mark Identifier ConstraintList* ['from' InheritanceList]
-     [IndentedStatements]
-
-Type ::=
-    'type' as p_mark Identifier
-     [IndentedStatements]
-
-Instance ::=
-    'instance' as p_mark Identifier ConstraintList* ['from' InheritanceList]
-     [IndentedStatements]
+    | 'let' as mark BindItem+ as seq 'then' Expr as then
+    rewrite
+        Bind(mark.lineno, mark.colno, tuple(seq), then)
 
 IfElse ::=
-    | 'if'    as p_mark Expr 'then' IndentedStatements
-      ['else' as p_mark             IndentedStatements]
+       'if' as mark
+        Expr  as test
+       'then' Block as if_true
+      ['else' Block as if_false]
+      rewrite IfExp(mark.lineno, mark.colno, test, if_true, if_false)
 
-PatMatch::=
-    | 'case' as p_mark Expr 'as' [IndentedBranches]  # indented branches
 
 Function::=
-    | 'fn' [Identifier] '(' [TypedExprList] ')' ['->' Expr] '=' IndentedStatements
+    |  'fn' as mark
+        [Identifier    as sym]
+       '('  [TypedExprList as args] ')' ['->' Expr as ret] '='
+        Block as body
+    rewrite Function(mark.lineno, mark.colno, sym, args, ret, body)
 
 Expr ::=
     | IfElse
     | PatMatch
     | BOpr
 
-BOpr ::= UOpr (BOp UOpr)*
+
+BOp ::= | ('or' | '-' | 'and') as elem
+        | '`' Name as name '`'
+        | (OperatorChar (OperatorChar | '.')*) as seq
+        rewrite
+            op = elem.value if elem else\
+                 name.value if name else\
+                 ''.join(each.value for each in seq)
+            Operator(ASDL.Symbol(op))
+
+BOpr ::= UOpr as head (BOp UOpr)*  as tail
+         rewrite
+            if tail:
+                itor = TwoSideLink.from_iter((head, *tail))
+                head = bin_expr_reduce(lambda op, a, b: ASDL.Call(op, a, b), itor)
+            head
+
+Uop ::= ''
 
 UOpr ::= UOp UOpr | App
 
@@ -74,24 +104,55 @@ Atom ::=
     | '(' Expr ')'
 
 
+
+# the following items is in lower priority
+
+Trait ::=
+    'trait' as p_mark Identifier ConstraintList* ['from' InheritanceList]
+     [Block]
+
+Type ::=
+    'type' as p_mark Identifier
+     [Block]
+
+Instance ::=
+    'instance' as p_mark Identifier ConstraintList* ['from' Block]
+     [Block]
+
+
+
+PatMatch::=
+    | 'case' Expr 'of' Branch+
+
+
+
 /*
 
 1. Function
 
+fn f (y: float -> int) -> int = {
 
-fn f
-   | (y: float -> int) -> int
-       y 1.0
-   | (x: float) -> float =
-       x + 1.0
+}
+
+
+2. Case
+case expr of
+    pattern1 => {
+
+    }
+    pattern2 => {
+
+    }
+
+    pattern3 => {
+
+    }
 
 * Lambda
-    fn (x) = x = 1
+    fn (x) = x + 1
     {x => x + 1}
     {_ + 1}
     {_1 + 1}
-
-
 
 2. IfElse
 
@@ -99,10 +160,8 @@ fn f
     else { }
 
     (if exp {result}) : option[typeof(result)]
-    (if exp {r1} else {r2}) when ( r1 == r2 on typeof): typeof(r1)
-    (if exp {r1} else {r2}) when ( r1 != r2 on typeof): union[r1, r2]
-
-
+    (if exp {r1} else {r2}) /*when ( r1 == r2 on typeof) */: typeof(r1)
+    (if exp {r1} else {r2}) /*when ( r1 != r2 on typeof) */: union[r1, r2]
 
 3. Case
 case v as
