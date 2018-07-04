@@ -1,0 +1,290 @@
+import std.common.[DoubleQuotedStr Comment Space]
+ignore[Space Comment]
+pyimport rml.utils.[*]
+pyimport rml.asdl.[*]
+
+Name    := R'[a-zA-Z\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff_]{1}[a-zA-Z\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff\d_]*'
+_Number := R'0[Xx][\da-fA-F]+|\d+(?:\.\d+|)(?:E\-{0,1}\d+|)'
+SingleQuote := R'\''
+
+Number ::= _Number as num
+           rewrite typed_number_from_token(num)
+
+Symbol ::= | Name as name
+           | 'var' as sign (Symbol | keyword) as name
+           | '(' BinOp as op ')'
+           rewrite
+               op if op else Symbol(*loc(sign if sign else name), name.value)
+
+keyword cast := 'let' 'for' 'yield' 'in' 'match' 'with' 'do' 'fn' 'of' 'var' 'where' 'true' 'false' 'nil' 'not' 'and' 'or' 'module' 'type'
+
+_BinOp := '~' '!' '@' '$' '%' '^' '&' '*' '+' '<' '>' '?'
+BinOp ::= | _BinOp+ as op_seq
+          | '`' as sign (keyword | Name) as name '`'
+          | ('and' as sign | 'or' as sign | '-' as sign) as name
+          rewrite
+            Symbol(*loc(op_seq[0]), join_token_values(op_seq)) if op_seq else\
+            Symbol(*loc(sign), name.value)
+
+UnaryOp ::= ('not' | '-') as op
+           rewrite
+              Symbol(*loc(op), op.value)
+
+Const ::= 'true' as t | 'false' as f | 'nil' as n
+           rewrite
+                Const.true(*loc(t)) if t else\
+                Const.false(*loc(f)) if f else\
+                Const.nil(*loc(n))
+
+String ::= DoubleQuotedStr+ as seq
+           rewrite
+                String(*loc(seq[0]), join_token_values(seq))
+
+
+_In ::= 'in'
+         when check_indent_inc(state, tokens, last=_1)
+
+
+_Yield ::= 'yield'
+            when check_indent_inc(state, tokens, last=_1)
+
+_Do    ::= 'do'
+            when check_indent_inc(state, tokens, last=_1)
+
+_Line ::= '|'
+           when check_indent_inc(state, tokens, last=_1)
+
+_Case ::= Case as ret
+          when check_indent_inc(state, tokens, last=_1)
+          rewrite ret
+
+_Arrow ::= '->'
+           when check_indent_inc(state, tokens, last=_1)
+
+_When  ::= 'when'
+           when check_indent_inc(state, tokens, last=_1)
+
+Let ::= 'let' as _1
+                Pattern as pat '=' Expr as expr
+         [_In Stmts as stuff]
+         rewrite
+            pattern = Case(*loc(pat), pat, stuff, None)
+            Match(*loc(_1), expr, (pattern,))
+
+
+For ::= 'for' as _1 Pattern as pat _In Expr as collection
+         (_Yield | _Do as void)
+            Stmts as stuff
+         rewrite
+            For(*loc(_1), pat, collection, stuff, not void)
+
+Match ::= 'match' as _1 Expr as expr 'with'
+           ((_Line Case)+ as seq1 | _Case as h (_Line Case)+ as seq2)
+          rewrite
+            Match(*loc(_1), expr, seq1[1::2] if seq1 else (h, *seq2[::2]))
+
+Case  ::= (Pattern as _1) as _pat
+          [_When  as  _1  Stmts as when_clause]
+          [_Arrow Stmts as stuff]
+          rewrite
+            Case(*loc(pat), pat, stuff, when_clause)
+
+Lambda ::= | 'fn' as _1  ('(' ')'| Pattern+ as args) '->' Stmts as stuff
+           | 'fn' as _1  (_Line Case)+ as seq
+          rewrite
+            Lambda(*loc(_1), args, stuff) if stuff else LambdaCases(*loc(_1), seq[1::2])
+
+_ADT ::= ADT as ret
+         when
+            check_indent_inc(state, tokens, last=_1)
+         rewrite
+            ret
+
+
+TypeSigImp ::=
+              | SingleQuote as _1 Symbol as sym [':' Symbol as refine]
+              | '(' TypeSigSeq as tuple_type ')'
+              | TypeSig as sig
+            rewrite
+                sig if sig else\
+                tuple_type if tuple_type else\
+                Undecided(*loc(_1), sym, refine)
+
+TypeSigSeq ::= (TypeSigImp ('*' TypeSigImp)*) as seq
+               rewrite
+                   seq[0] if len(seq) is 1 else TupleType(*loc(seq[0]), tuple(seq[::2]))
+
+TypeSig ::= Symbol as name ['of' TypeSigSeq as type_spec]
+     rewrite
+        TypeSig(*loc(name), name.value, type_spec)
+
+FieldDecl ::= Symbol as sym ':' TypeSigImp as sig
+            rewrite
+                FieldDecl(*loc(sym), sym.value, sig)
+
+
+TypeDef  ::=
+    | 'type' as _1 TypeSig as sig '='
+       '{'
+            (FieldDecl (';' FieldDecl)*) as fields
+       '}'
+    | 'type' as _1  TypeSig as sig '='
+        ((_Line ADT)+ as seq1 | (_ADT (_Line ADT)*) as seq2)
+    rewrite
+        DiscriminateUnionDef(*loc(_1), sig, seq1[1::2] if seq1 else seq2[::2]) if not fields else\
+        RecordDef(*loc(_1), sig, tuple(fields[::2]))
+
+
+
+ADT ::= Symbol as tag [TypeSigSeq as cons]
+        rewrite
+            ADT(*loc(tag), tag.value, cons)
+
+Expr ::=
+    | Let       as body
+    | For       as body
+    | Match     as body
+    | BinOpr    as body
+    rewrite
+        body
+
+Pattern ::=
+    | ConsPattern   as pat  [':' TypeSig as sig]
+    | ListPattern   as pat  [':' TypeSig as sig]
+    | TuplePattern  as pat  [':' TypeSig as sig]
+    | RecordPattern as pat  [':' TypeSig as sig]
+    | ADTPattern    as pat  [':' TypeSig as sig]
+    | NamePattern   as pat  [':' TypeSig as sig]
+    | LiteralExpr   as pat  [':' TypeSig as sig]
+    rewrite
+        Annotation(sig, pat) if sig else pat
+
+
+PatternPair ::= NamePattern as key '=' Pattern as value
+                rewrite
+                    PatternPair(*loc(key), key, value)
+
+ConsPattern ::= | Pattern as head '::' ConsPattern as tail
+                | Pattern as head2
+                rewrite
+                    ConsPattern(*loc(head), head, tail) if tail else head2
+
+ListPattern ::= '[' as _1 [Pattern (',' Pattern)*] as seq ']'
+                 rewrite
+                    ListPattern(*loc(_1), tuple(seq[::2]))
+
+TuplePattern ::= '(' as _1 [(Pattern (',' Pattern)*) [',']] as seq ')'
+                  rewrite
+                    TuplePattern(*loc(_1), tuple(seq[::2]))
+
+RecordPattern ::= '{' as _1 (PatternPair (',' PatternPair)*) as seq  '}'
+                rewrite
+                    RecordPattern(*loc(_1), tuple(seq[::2]))
+
+ADTPattern ::= Symbol as sym ('(' (Pattern (',' Pattern)*) as seq ')' | Pattern as single)
+                rewrite
+                    seq = tuple(seq[::2]) if seq else (single, )
+                    ADTPattern(*loc(sym), sym, seq)
+
+NamePattern ::= Symbol as sym | String as sym
+                rewrite NamePattern(*loc(sym), sym.value)
+
+LiteralExpr ::= Atom as atom
+                rewrite LiteralExpr(*loc(atom), atom)
+
+BinOpr ::= (UnaryOpr (BinOp UnaryOpr)*) as bin_op_seq
+            rewrite
+                if len(bin_op_seq) is 1:
+                    r = bin_op_seq[0]
+                else:
+                    r = BinOprSeq(*loc(bin_op_seq[0]), bin_op_seq)
+                r
+
+UnaryOpr ::= App as app | UnaryOp as unary UnaryOpr as body
+            rewrite
+                app if app else FunctionCall(*loc(unary), (unary, body))
+
+App    ::= (ConsExpr as _1) as head (ConsExpr as _1)* as tail
+            rewrite
+                FunctionCall(*loc(head), (head, *tail)) if tail else head
+
+ConsExpr ::= IndexExpr as head ['::' as op ConsExpr as tail]
+             when
+               check_not_new_line(state, tokens)
+             rewrite
+                FunctionCall(*loc(head), (op, head, tail)) if tail else head
+
+IndexItem ::= '.' '[' as _1 (Expr (',' Expr)*) as items ']'
+              rewrite
+                  IndexItem(*loc(_1), tuple(items[::2]))
+
+IndexExpr ::= AccessorExpr as value IndexItem* as items
+              rewrite
+                Index(*loc(value), value, items) if items else value
+
+AccessorExpr ::=  AtomExpr as value ('.' Symbol)* as attrs
+                rewrite
+                    Accessor(*loc(value), value, tuple(attrs[1::2])) if attrs else value
+
+AtomExpr ::=
+        | Symbol    as v
+        | Literal   as v
+        | Atom      as v
+        rewrite v
+
+Literal ::=
+    | ListLiteral   as v
+    | ArrayLiteral  as v
+    | TupleLiteral  as v
+    | RecordLiteral as v
+    rewrite v
+
+ListLiteral::= '[' as _1 [(Expr (',' Expr)*)] as seq ']'
+                rewrite
+                    ListLiteral(*loc(_1), tuple(seq[::2]))
+
+ArrayLiteral ::= '[|' as _1 [(Expr (',' Expr)*)] as seq '|]'
+                 rewrite
+                    ArrayLiteral(*loc(_1), tuple(seq[::2]))
+
+TupleLiteral ::= '(' as _1 [(Expr (',' Expr)*) [',']] as seq ')'
+                rewrite
+                    TupleLiteral(*loc(_1), tuple(seq[::2]))
+
+ExprPair ::= Symbol as key '=' Expr as value
+                rewrite
+                    ExprPair(*loc(key), key, value)
+
+RecordLiteral ::= '{' as _1 [(ExprPair (',' ExprPair)*)] as seq  '}'
+                rewrite
+                    RecordLiteral(*loc(_1), tuple(seq[::2]))
+
+Atom ::=
+    | Number  as v
+    | String  as v
+    | Const   as v
+    | Lambda  as v
+    rewrite v
+
+
+Stmt ::=
+    | TypeDef as body
+    | Expr as body
+    with
+        not _1 or body.colno == _1.colno
+    rewrite
+        body
+
+Separator ::= ';'
+            when check_not_new_line(state, tokens)
+
+
+Stmts ::= (Stmt as _1 [Separator])+ as seq
+    when
+        check_indent_inc(state, tokens, last=_1)
+    rewrite
+        tuple(seq[::2])
+
+ModuleDef ::=
+    'module' as _ Symbol as mod_name 'where' [Stmts as seq]
+     rewrite ModuleDef(*loc(_), mod_name, seq)
