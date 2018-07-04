@@ -6,7 +6,7 @@ pyimport rml.asdl.[*]
 Name    := R'[a-zA-Z\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff_]{1}[a-zA-Z\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff\d_]*'
 _Number := R'0[Xx][\da-fA-F]+|\d+(?:\.\d+|)(?:E\-{0,1}\d+|)'
 SingleQuote := R'\''
-
+lexerHelper := '..'
 Number ::= _Number as num
            rewrite typed_number_from_token(num)
 
@@ -74,7 +74,7 @@ Let ::= 'let' as _1
 
 For ::= 'for' as _1 Pattern as pat _In Expr as collection
          (_Yield | _Do as void)
-            Stmts as stuff
+         StmtsIndPlus as stuff
          rewrite
             For(*loc(_1), pat, collection, stuff, not void)
 
@@ -204,17 +204,23 @@ UnaryOpr ::= App as app | UnaryOp as unary UnaryOpr as body
             rewrite
                 app if app else FunctionCall(*loc(unary), (unary, body))
 
-App    ::= (ConsExpr as _1) as head (ConsExpr as _1)* as tail
+App    ::= (ConsExpr as _1) as head (TConsExpr as _1)* as tail
             rewrite
                 FunctionCall(*loc(head), (head, *tail)) if tail else head
 
 ConsExpr ::= IndexExpr as head ['::' as op ConsExpr as tail]
-             when
-               check_not_new_line(state, tokens)
-             rewrite
-                FunctionCall(*loc(head), (op, head, tail)) if tail else head
+              rewrite FunctionCall(*loc(head), (op, head, tail)) if tail else head
 
-IndexItem ::= '.' '[' as _1 (Expr (',' Expr)*) as items ']'
+TConsExpr ::= ConsExpr as ret
+              when
+               check_not_new_line(state, tokens)
+              rewrite ret
+
+SliceItem ::= Expr as start ['..' as is_slice [Expr as end ['..' Expr as sep]]]
+            rewrite
+                start if not is_slice else Slice(start, end, sep)
+
+IndexItem ::= '.' '[' as _1 (SliceItem (',' SliceItem)*) as items ']'
               rewrite
                   IndexItem(*loc(_1), tuple(items[::2]))
 
@@ -270,20 +276,27 @@ Atom ::=
 Stmt ::=
     | TypeDef as body
     | Expr as body
-    with
-        not _1 or body.colno == _1.colno
+    when
+        not _1 or check_indent_eq(state, tokens, last=_1)
+
     rewrite
         body
 
-Separator ::= ';'
+Separator ::= ';' as it
             when check_not_new_line(state, tokens)
-
+            rewrite it
 
 Stmts ::= (Stmt as _1 [Separator])+ as seq
     when
         check_indent_inc(state, tokens, last=_1)
     rewrite
-        tuple(seq[::2])
+        tuple(e for e in seq if not isinstance(e, Tokenizer))
+
+StmtsIndPlus ::= (Stmt as _1 [Separator])+ as seq
+    when
+        check_indent_inc_s(state, tokens, last=_1)
+    rewrite
+        tuple(e for e in seq if not isinstance(e, Tokenizer))
 
 ModuleDef ::=
     'module' as _ Symbol as mod_name 'where' [Stmts as seq]

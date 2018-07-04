@@ -32,9 +32,22 @@ module S where
     
 """))
 
+# ze_exp = ze.compile('import rml.rml.[*]', use='Stmts')
+
+assert not success(ze_exp.match("""
+module S where
+    for x in f yield 
+   1  
+"""))
+
+assert not success(ze_exp.match("""
+module S where
+    for x in f yield 
+    1  
+"""))
+
 assert success(ze_exp.match("""
 module S where
-    type S of 'a = 
-    | S Int
-    | S Int * (A of 'a)
+    for x in f yield 
+       1  
 """))

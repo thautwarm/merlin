@@ -25,7 +25,9 @@ def template(func: types.FunctionType):
                 if v is _undef:
                     return next(args)
                 return v
-            return func(*args, **{k: _get_key(kwargs, k, _default_get) for k in func.__code__.co_varnames[:func.__code__.co_argcount]})
+
+            return func(*args, **{k: _get_key(kwargs, k, _default_get) for k in
+                                  func.__code__.co_varnames[:func.__code__.co_argcount]})
 
         def drop(_):
             return call
@@ -72,6 +74,10 @@ def check_not_new_line(state: State, tokens: Sequence[Tokenizer], last: Tokenize
 
 @check_indent(how=operator.ge, last=_undef)
 def check_indent_inc(): ...
+
+
+@check_indent(how=operator.gt, last=_undef)
+def check_indent_inc_s(): ...
 
 
 @check_indent(how=operator.le, last=_undef)

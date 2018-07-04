@@ -28,6 +28,16 @@ class IndexItem(ASDL, NamedTuple):
 
 
 @record
+class Slice(ASDL, NamedTuple):
+    lineno: int
+    colno: int
+
+    start: ASDL
+    end: ASDL
+    sep: ASDL
+
+
+@record
 class Index(ASDL, NamedTuple):
     lineno: int
     colno: int

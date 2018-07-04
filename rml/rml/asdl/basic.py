@@ -7,6 +7,7 @@ import numpy as np
 
 globals()['NamedTuple'] = object
 
+
 class NativeType:
     i8 = np.int8
     i16 = np.int16
