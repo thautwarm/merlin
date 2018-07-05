@@ -6,11 +6,24 @@ class _Undef:
     pass
 
 
+"""
+type S of 'a = 
+    | F Int 'a
+    | G Int S of 'b
+
+let t  = fn F(1, x) -> x
+S of 'a -> 'a
+  
+"""
+
+
 class SymTable:
     _undef = _Undef()
 
     def __init__(self, parent: 'SymTable' = None):  # parent is for building closure dynamically.
-        self._var_storage: List[ASDL] = {}
+        self._var_storage: List[ASDL] = []
+        self._var_types: List[TypeSig] = []
+
         self._var_index: Dict[str, int] = {}
         self._parent = parent
 

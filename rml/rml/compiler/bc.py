@@ -1,5 +1,7 @@
 # for auto completion
 import opcode
+from collections import deque
+
 bc = {
     'POP_TOP': 1, 'ROT_TWO': 2, 'ROT_THREE': 3, 'DUP_TOP': 4, 'DUP_TOP_TWO': 5, 'NOP': 9, 'UNARY_POSITIVE': 10,
     'UNARY_NEGATIVE': 11, 'UNARY_NOT': 12, 'UNARY_INVERT': 15, 'BINARY_MATRIX_MULTIPLY': 16,
@@ -30,11 +32,11 @@ bc = {
 
 def build_inst(op, arg):
     if arg is 0:
-        return [(op, arg)]
+        return [op, arg]
 
-    b = [(op, arg & 0xff)]
+    b = deque([op, arg & 0xff])
     while arg > 0xff:
         arg >>= 8
-        b.append((opcode.EXTENDED_ARG, arg & 0xff))
-    b.reverse()
+        b.appendleft(arg & 0xff)
+        b.appendleft(opcode.EXTENDED_ARG)
     return b

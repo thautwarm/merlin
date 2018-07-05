@@ -53,7 +53,7 @@ class For(ASDL, NamedTuple):
 
     pat: 'Pattern'
     collection: ASDL
-    stuff: ASDL
+    stuff: tuple
     return_value: bool
 
 

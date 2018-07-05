@@ -1,9 +1,10 @@
 from rbnf.Tokenizer import Tokenizer
 from rbnf.State import State
+from Redy.Magic.Pattern import Pattern
 from typing import Sequence, Optional
+from functools import update_wrapper
 import operator
 import types
-from .asdl import *
 
 _undef = object()
 
@@ -93,9 +94,23 @@ def join_token_values(tks: Sequence[Tokenizer]):
 
 
 def typed_number_from_token(tk: Tokenizer):
+    from .asdl.basic import Number, NativeType
     num = eval(tk.value)
-    return Number(tk.lineno, tk.colno, num, NativeType.i64 if isinstance(num, int) else NativeType.f64)
+    return Number(tk.lineno, tk.colno, num, NativeType.i if isinstance(num, int) else NativeType.f)
 
 
 def loc(tk: Tokenizer):
     return tk.lineno, tk.colno
+
+
+def make_overload(pat_func):
+    pattern_maker = Pattern(pat_func)
+    update_wrapper(pattern_maker, pat_func)
+
+    def call(reg_func: 'function'):
+        k, v = next(iter(reg_func.__annotations__.items()))
+        return pattern_maker.case(v)(reg_func)
+
+    pat_func.__globals__['overload'] = call
+
+    return call

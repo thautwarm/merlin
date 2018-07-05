@@ -108,9 +108,9 @@ TypeSigImp ::=
             rewrite
                 sig if sig else\
                 tuple_type if tuple_type else\
-                Undecided(*loc(_1), sym, refine)
+                Undecided(*loc(_1), sym.value, refine)
 
-TypeSigSeq ::= (TypeSigImp ('*' TypeSigImp)*) as seq
+TypeSigSeq ::= TypeSigImp+ as seq
                rewrite
                    seq[0] if len(seq) is 1 else TupleType(*loc(seq[0]), tuple(seq[::2]))
 
@@ -131,7 +131,7 @@ TypeDef  ::=
     | 'type' as _1  TypeSig as sig '='
         ((_Line ADT)+ as seq1 | (_ADT (_Line ADT)*) as seq2)
     rewrite
-        DiscriminateUnionDef(*loc(_1), sig, seq1[1::2] if seq1 else seq2[::2]) if not fields else\
+        DiscriminateUnionDef(*loc(_1), sig, tuple(seq1[1::2] if seq1 else seq2[::2])) if not fields else\
         RecordDef(*loc(_1), sig, tuple(fields[::2]))
 
 
@@ -157,7 +157,7 @@ Pattern ::=
     | NamePattern   as pat  [':' TypeSig as sig]
     | LiteralExpr   as pat  [':' TypeSig as sig]
     rewrite
-        Annotation(sig, pat) if sig else pat
+        Annotation(*loc(pat), pat, sig) if sig else pat
 
 
 PatternPair ::= NamePattern as key '=' Pattern as value
@@ -275,10 +275,9 @@ Atom ::=
 
 Stmt ::=
     | TypeDef as body
-    | Expr as body
+    | Expr    as body
     when
         not _1 or check_indent_eq(state, tokens, last=_1)
-
     rewrite
         body
 

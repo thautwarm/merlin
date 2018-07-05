@@ -28,7 +28,7 @@ assert not success(ze_exp.match("""
 module S where
     type S = 
     | S Int
-  | S Int * (A of 'a)
+  | S Int A of 'a
     
 """))
 
@@ -51,3 +51,21 @@ module S where
     for x in f yield 
        1  
 """))
+
+
+r = ze_exp.match("""
+module S where
+    type S = S S of 'a 
+    type S = S S of 'a
+
+""")
+
+a, b = r.result.stuff
+
+
+
+
+
+
+
+

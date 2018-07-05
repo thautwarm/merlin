@@ -1,0 +1,22 @@
+
+type mc of 'a =
+    | S 'a mc of 'a
+
+
+mc of int =>
+    | S int (mc of int)
+    # recursive, stop
+
+
+
+
+mc of 'a =
+    | S md of 'a
+
+
+md of 'b =
+    | G ms of 'b
+
+
+ms of int =
+    | S md of 'a

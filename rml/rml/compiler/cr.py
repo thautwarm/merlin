@@ -1,6 +1,5 @@
-from Redy.Opt.ConstExpr import optimize, const
-
 import types
+from Redy.Opt.ConstExpr import optimize, const
 from rml.compiler.bc import build_inst, bc
 
 

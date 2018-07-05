@@ -1,5 +1,5 @@
 from typing import NamedTuple, Union, Tuple, TypeVar
-from Redy.Magic.Classic import record
+from Redy.Magic.Classic import record, discrete_cache
 
 from Redy.ADT.Core import data
 from Redy.ADT import traits
@@ -9,18 +9,26 @@ globals()['NamedTuple'] = object
 
 
 class NativeType:
-    i8 = np.int8
-    i16 = np.int16
-    i32 = np.int32
-    i64 = np.int64
-    ui8 = np.uint8
-    ui16 = np.uint16
-    ui32 = np.uint32
-    ui64 = np.uint64
+    i = int
+    f = float
+    s = str
+    v = None
+    b = bool
+    o = object
+    # python untyped object
 
-    f16 = np.float16
-    f32 = np.float32
-    f64 = np.float64
+    # i8 = np.int8
+    # i16 = np.int16
+    # i32 = np.int32
+    # i64 = np.int64
+    # ui8 = np.uint8
+    # ui16 = np.uint16
+    # ui32 = np.uint32
+    # ui64 = np.uint64
+    #
+    # f16 = np.float16
+    # f32 = np.float32
+    # f64 = np.float64
 
 
 T = TypeVar('T')
@@ -36,6 +44,9 @@ class Symbol(ASDL, NamedTuple):
     colno: int
 
     value: str
+
+    def to_name(self):
+        return self.value.split('@', 1)[0]
 
 
 @record
